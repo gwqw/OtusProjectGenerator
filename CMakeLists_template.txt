@@ -15,8 +15,11 @@ if (USE_TEST)
 endif()
 
 # source
-set(EXE_SOURCE %SOURCE_LIST%)
-set(TEST_SOURCE %TEST_SOURCE_LIST%)
+set(SOURCE %COMMON_SOURCE_LIST%)
+set(EXE_SOURCE %SOURCE_LIST% ${SOURCE})
+if (USE_TEST)
+    set(TEST_SOURCE %TEST_SOURCE_LIST% ${SOURCE})
+endif()
 
 # targets and libraries
 set(EXE_NAME %PROJECT_NAME%)

@@ -9,6 +9,7 @@ import shutil
 
 PROJECT_NAME = "%PROJECT_NAME%"
 IS_TEST = "%IS_TEST%"
+COMMON_SOURCE_LIST = "%COMMON_SOURCE_LIST%"
 SOURCE_LIST = "%SOURCE_LIST%"
 TEST_SOURCE_LIST = "%TEST_SOURCE_LIST%"
 
@@ -16,6 +17,7 @@ class ProjConfig:
     def __init__(self):
         self.path = ""
         self.project_name = "hello"
+        self.common_source_list = ""
         self.source_list = ""
         self.test_source_list = ""
         self.is_test = False
@@ -42,29 +44,32 @@ class ProjConfig:
                         g.write(line)
                         continue
                     line = (line.replace(PROJECT_NAME, self.project_name).replace(IS_TEST, self.test_option).
-                            replace(SOURCE_LIST, self.source_list).replace(TEST_SOURCE_LIST, self.test_source_list))
+                            replace(SOURCE_LIST, self.source_list).replace(COMMON_SOURCE_LIST, self.common_source_list)
+                            .replace(TEST_SOURCE_LIST, self.test_source_list))
                     g.write(line)
 
     def get_source_lists(self):
+        self.common_source_list = self.common_source_list.split()
         self.source_list = self.source_list.split()
         self.test_source_list = self.test_source_list.split()
+        self.common_headers = [s for s in self.common_source_list if s[-1] == 'h']
         self.source_headers = [s for s in self.source_list if s[-1] == 'h']
         self.test_headers = [s for s in self.test_source_list if s[-1] == 'h']
+        self.test_source_list = list(set(self.test_source_list) - set(self.test_headers))
+        self.source_list = list(set(self.source_list) - set(self.source_headers)) + list(set(self.common_source_list) - set(self.common_headers))
 
     def create_source_files(self):
         self.created_sources = []
         if "main.cpp" in self.source_list:
-            self.main = "main.cpp"
-            self.create_main()
+            self.source_list.remove("main.cpp")
             self.created_sources.append("main.cpp")
-        else:
-            print("no main.cpp file")
+        self.create_main()
         self.create_headers()
         self.create_other_sources()
         self.create_test_sources()
 
     def create_main(self):
-        with open(self.path + self.main, 'w') as f:
+        with open(self.path + "main.cpp", 'w') as f:
             f.write("#include <iostream>\n\n")
             for h in self.source_headers:
                 f.write(f'#include "{h}"\n')
@@ -74,35 +79,37 @@ class ProjConfig:
             f.write("}\n")
 
     def create_headers(self):
-        for h in self.source_headers:
+        headers = set(self.source_headers) | set(self.common_headers) | set(self.test_headers)
+        for h in headers:
             with open(self.path + h, 'w') as f:
                 f.write("#pragma once\n")
-        for h in self.test_headers:
-            if h not in self.source_headers:
-                with open(self.path + h, 'w') as f:
-                    f.write("#pragma once\n")
+
+    def create_other_sources(self):
+        for s in self.source_list:
+            if s in self.created_sources: continue
+            with open(self.path + s, 'w') as f:
+                for h in self.common_headers:
+                    f.write(f'#include "{h}"\n')
+                for h in self.source_headers:
+                    f.write(f'#include "{h}"\n')
+                f.write("\nusing namespace std;\n\n")
+            self.created_sources.append(s)
 
     def create_test_sources(self):
         for s in self.test_source_list:
-            if s in self.test_headers or s in self.created_sources: continue
+            if s in self.created_sources: continue
             with open(self.path + s, 'w') as f:
                 f.write("#define BOOST_TEST_MODULE %s_test_module\n" % (self.project_name))
                 f.write("#include <boost/test/unit_test.hpp>\n\n")
-                for h in self.source_headers:
+                for h in self.common_headers:
+                    f.write(f'#include "{h}"\n')
+                for h in self.test_headers:
                     f.write(f'#include "{h}"\n')
                 f.write("\nusing namespace std;\n\n")
                 f.write(f"BOOST_AUTO_TEST_SUITE({self.project_name}_test_suite)\n\n")
                 f.write("\tBOOST_AUTO_TEST_CASE(test_) {\n\n")
                 f.write("\t}\n\n")
                 f.write("BOOST_AUTO_TEST_SUITE_END()\n")
-
-    def create_other_sources(self):
-        for s in self.source_list:
-            if s in self.source_headers or s == self.main: continue
-            with open(self.path + s, 'w') as f:
-                for h in self.source_headers:
-                    f.write(f'#include "{h}"\n')
-                f.write("\nusing namespace std;\n\n")
             self.created_sources.append(s)
 
     def create_travis_yaml(self):
@@ -129,6 +136,8 @@ class ProjConfig:
                             res.path += '/'
                     elif par_name == "PROJECT_NAME":
                         res.project_name = par_value
+                    elif par_name == "COMMON_SOURCE_LIST":
+                        res.common_source_list = par_value
                     elif par_name == "SOURCE_LIST":
                         res.source_list = par_value
                     elif par_name == "TEST_SOURCE_LIST":
